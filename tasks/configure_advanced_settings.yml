@@ -1,1 +1,20 @@
 ---
+- name: Configure vCenter Global Advanced Settings
+  sg_vmware_vcenter_settings:
+    hostname: "{{ inventory_hostname }}"
+    username: "{{ vcsa_sso_username }}"
+    password: "{{ vcsa_sso_password }}"
+    settings: "{{ vcsa_global_advanced_settings }}"
+    validate_certs: no
+  delegate_to: localhost
+  when: vcsa_global_advanced_settings is defined
+
+- name: Configure vCenter Regional Advanced Settings
+  sg_vmware_vcenter_settings:
+    hostname: "{{ inventory_hostname }}"
+    username: "{{ vcsa_sso_username }}"
+    password: "{{ vcsa_sso_password }}"
+    settings: "{{ vcsa_regional_advanced_settings }}"
+    validate_certs: no
+  delegate_to: localhost
+  when: vcsa_regional_advanced_settings is defined
