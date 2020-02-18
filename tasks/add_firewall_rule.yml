@@ -1,0 +1,51 @@
+---
+- name: Get Existing Firewall Rules
+  uri:
+    url: "https://{{ inventory_hostname|lower }}/rest/appliance/techpreview/networking/firewall/addr/inbound"
+    validate_certs: "{{ http_validate_certs }}"
+    method: GET
+    headers:
+      Accept: "{{ http_accept }}"
+      vmware-api-session-id: "{{ vcsa_api_session_key }}"
+    status_code: [200]
+  register: vcsa_firewall_list_response
+  delegate_to: localhost
+  changed_when: vcsa_firewall_rule_response.status == 200
+
+- name: Set Firewall List
+  set_fact:
+    vcsa_firewall_list: "{{ vcsa_firewall_list_response.json.value }}"
+
+- name: Get Matching Ruleset
+  set_fact:
+    matching_rule: "{{ vcsa_firewall_list | json_query(query) }}"
+  vars:
+    query: "[?address=='{{ vcsa_rule.ipaddress }}' and prefix=='{{ vcsa_rule.prefix }}']"
+
+# - name: Check Default Rule is at the end of the Ruleset
+#   set_fact:
+#     vcsa_default_rule_at_end: true
+#   when: |
+#     vcsa_default_fw_rule|bool and
+#     matching_rule is defined and 
+
+- name: "Adding firewall rule to {{ vcsa_rule.policy | default('allow') }} address: {{ vcsa_rule.ipaddress }}"
+  uri:
+    url: "https://{{ inventory_hostname|lower }}/rest/appliance/techpreview/networking/firewall/addr/inbound"
+    validate_certs: "{{ http_validate_certs }}"
+    method: POST
+    headers:
+      Accept: "{{ http_accept }}"
+      vmware-api-session-id: "{{ vcsa_api_session_key }}"
+    body_format: "{{ http_body_format }}"
+    body:
+      pos: "{{ vcsa_firewall_list|length if "
+      rule:
+        policy: "{{ vcsa_rule.policy | default('allow') }}"
+        prefix: "{{ vcsa_rule.prefix }}"
+        interface_name: "nic0"
+        address: "{{ vcsa_rule.ipaddress }}"
+    status_code: [200]
+  register: vcsa_firewall_rule_response
+  delegate_to: localhost
+  changed_when: vcsa_firewall_rule_response.status == 200
