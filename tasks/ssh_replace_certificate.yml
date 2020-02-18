@@ -1,0 +1,72 @@
+---
+# This is for replacing the vCSA certificate
+
+- name: Deploy and Install vCSA certificate
+  block:
+  # Copy all the files
+  - name: Copy the certificate files to the vCSA server
+    copy: content={{ item.content }} dest={{ item.dest }}
+    with_items:
+      - { content: "{{ certificate_private_key_content }}", dest: "/tmp/{{ inventory_hostname|lower }}.key" }
+      - { content: "{{ certificate_server_content }}", dest: "/tmp/{{ inventory_hostname|lower }}.crt" }
+      - { content: "{{ certificate_intermediate_content }}", dest: "/tmp/{{ certificate_intermediate }}" }
+      - { content: "{{ certificate_root_content }}", dest: "/tmp/{{ certificate_root }}" }
+
+  # export existing certificate thumprint (this is required for replacing with a new one)
+  - name: Export existing cert for comparison
+    shell: >
+      /usr/lib/vmware-vmafd/bin/vecs-cli entry getcert
+      --store MACHINE_SSL_CERT
+      --alias __MACHINE_CERT
+      --output /tmp/existingCert.crt
+
+  - name: Get fingerprint of the existing certificate
+    shell: /usr/bin/openssl x509 -in /tmp/existingCert.crt -noout -sha1 -fingerprint | /usr/bin/cut -d= -f 2
+    register: existing_crt_fingerprint
+
+  # Installation:
+  - name: Create certificate chain with intermediate and root CA
+    shell: |
+      cat '/tmp/{{ certificate_intermediate }}' > /tmp/certificatechain.crt
+      printf '\n' >> /tmp/certificatechain.crt
+      cat '/tmp/{{ certificate_root }}' >> /tmp/certificatechain.crt
+      printf '\n' >> /tmp/{{ inventory_hostname|lower }}.crt
+      cat '/tmp/certificatechain.crt' >> /tmp/{{ inventory_hostname|lower }}.crt
+
+  - name: Import certificate chain
+    shell: >
+      /usr/lib/vmware-vmafd/bin/dir-cli trustedcert publish --chain
+      --cert /tmp/certificatechain.crt
+      --login '{{ vcsa_sso_username }}'
+      --password '{{ vcsa_sso_password }}'
+
+  - name: vecs-cli force-refresh
+    shell: /usr/lib/vmware-vmafd/bin/vecs-cli force-refresh
+
+  - name: Delete old certificate from the vCSA store
+    shell: >
+      /usr/lib/vmware-vmafd/bin/vecs-cli entry delete
+      --store MACHINE_SSL_CERT
+      --alias __MACHINE_CERT -y
+
+  - name: Import certificate in the vCSA store
+    shell: >
+      /usr/lib/vmware-vmafd/bin/vecs-cli entry create
+      --store MACHINE_SSL_CERT
+      --alias __MACHINE_CERT
+      --cert /tmp/{{ inventory_hostname|lower }}.crt
+      --key /tmp/{{ inventory_hostname|lower }}.key
+
+  # this command is required to update the SSO lookup service certificate: https://kb.vmware.com/s/article/2121689
+  # Otherwise vRO SSO integration fails with "Failed with error : Error ! An error occurred while retrieving the Single Sign-On token from; https://vCenter/lookupservice/sdk"
+  - name: Run python script ls_update_certs.py to finalise installation
+    shell: >
+      /usr/lib/vmidentity/tools/scripts/ls_update_certs.py
+      --url https://localhost/lookupservice/sdk
+      --fingerprint {{ existing_crt_fingerprint.stdout }}
+      --certfile /tmp/{{ inventory_hostname|lower }}.crt
+      --user {{ vcsa_sso_username }}
+      --password '{{ vcsa_sso_password }}'
+
+  # Certificate is mandatory for SIT, UAT and PROD but not LAB
+  when: (active_environment in strict_environment) and (certificate_update_status == 1)
