@@ -1,0 +1,16 @@
+---
+- name: "Waiting that vpxd service starts"
+  uri:
+    url: "https://{{ inventory_hostname|lower }}/rest/appliance/vmon/service/vpxd"
+    validate_certs: "{{ http_validate_certs }}"
+    method: GET
+    headers:
+      Accept: "{{ http_accept }}"
+      vmware-api-session-id: "{{ vcsa_api_session_key }}"
+    status_code: [200]
+  register: vcsa_service_info
+  until: "(vcsa_service_info is success) and (vcsa_service_info.json.value.state == 'STARTED')"
+  retries: "{{ vpxd_rest_wait_retries }}"
+  delay: "{{ vpxd_rest_wait_delay }}"
+  delegate_to: localhost
+  delegate_facts: true
