@@ -1,0 +1,54 @@
+---
+- name: Update {{ identity_sso_config_file }}
+  copy:
+    src: "{{ identity_sso_config_file }}"
+    dest: /opt/vmware/lib64/{{ identity_sso_config_file }}
+    mode: u=rw,g=r,o=r
+    checksum: "{{ identity_sso_config_file_checksum }}"
+
+- name: Add External Identity Source Name
+  lineinfile:
+    path: /usr/lib/vmware/cis_upgrade_runner/payload/component-scripts/sso/exported_sso.properties
+    regexp: "^ExternalIdentitySource.{{ ad_join_domain }}.name={{ ad_join_domain }}$"
+    line: "ExternalIdentitySource.{{ ad_join_domain }}.name={{ ad_join_domain }}"
+    create: "yes"
+  register: sso_name
+
+- name: Add External Identity Source Type
+  lineinfile:
+    path: /usr/lib/vmware/cis_upgrade_runner/payload/component-scripts/sso/exported_sso.properties
+    regexp: "^ExternalIdentitySource.{{ ad_join_domain }}.type=0$"
+    insertafter: "^ExternalIdentitySource.{{ ad_join_domain }}.name={{ ad_join_domain }}$"
+    line: "ExternalIdentitySource.{{ ad_join_domain }}.type=0"
+    create: "yes"
+  register: sso_type
+
+- name: Add External Identity Source Type
+  lineinfile:
+    path: /usr/lib/vmware/cis_upgrade_runner/payload/component-scripts/sso/exported_sso.properties
+    regexp: "^ExternalIdentitySourcesDomainNames={{ ad_join_domain }}$"
+    insertafter: "^ExternalIdentitySource.{{ ad_join_domain }}.type=0$"
+    line: "ExternalIdentitySourcesDomainNames={{ ad_join_domain }}"
+    create: "yes"
+  register: sso_dn
+
+- name: Import SSO Identity Sources
+  command: "/bin/bash /usr/lib/vmware/cis_upgrade_runner/payload/component-scripts/sso/sso_import.sh"
+  register: import_sso_command
+  when: |
+    sso_name.changed|bool or
+    sso_type.changed|bool or
+    sso_dn.changed|bool
+
+- name: Check if SSO configuration failed and leave domain if it has
+  block:
+  - name: Leave the domain if there was an issue configuring SSO
+    command: "/opt/likewise/bin/domainjoin-cli leave"
+    register: ad_leave_command
+    when: ("Failed to import identity source:" + ad_join_domain) in import_sso_command.stderr
+
+  - name: Fail due to SSO error
+    fail:
+      msg: "Failed to add SSO identity sources"
+    when: ("Failed to import identity source:" + ad_join_domain) in import_sso_command.stderr
+  when: import_sso_command.stderr is defined
