@@ -1,42 +1,146 @@
 ---
-- name: Update krb5.conf file
-  lineinfile:
-    path: /etc/krb5.conf
-    create: yes
-    regexp: '^\[libdefaults\]$'
-    line: "[libdefaults]"
+# when the vCSA appliance is successfully joined to the domain, the cli return the string "Domain = <DOMAIN>" (or the other domains)
+# so we check for this to know if it is already joined and we skip config or not.
+# not (ad_join_check_command.stdout | join('') ) is search(ad_join_string)
 
-- name: Update rdns in krb5.conf file
-  lineinfile:
-    path: /etc/krb5.conf
-    regexp: '^\srdns\s=\s(false|true)$'
-    insertafter: '^\[libdefaults\]$'
-    line: " rdns = false"
-
-- name: "Check if appliance is already joined to domain: {{ vcsa_ad_dom_join_domain }}"
-  shell: "/opt/likewise/bin/domainjoin-cli query"
-  register: ad_query
+- name: Check if the appliance is already joined to the domain
+  command: "/opt/likewise/bin/domainjoin-cli query"
+  register: ad_join_check_command
   changed_when: false
 
-- name: "Join appliance to domain: {{ vcsa_ad_dom_join_domain }}"
-  shell: >
-    /opt/likewise/bin/domainjoin-cli join
-    --ou "{{ vcsa_ad_dom_join_ou | default() }}"
-    "{{ vcsa_ad_dom_join_domain }}"
-    "{{ vcsa_ad_dom_join_username }}"
-    "{{ vcsa_ad_dom_join_password }}"
-  register: ad_join
+- set_fact:
+    ad_join_string: "Domain = {{ ad_join_domain |upper }}"
+    server_dns_extension: "{{ inventory_hostname.split('.', 1)[1] }}"
+
+- name: Delete krb5.conf and recreate it from scratch
+  file:
+    path: /etc/krb5.conf
+    state: absent
+  when: not (ad_join_check_command.stdout | join('') ) is search(ad_join_string)
+
+- name: Create or Update libdefaults in krb5.conf file
+  lineinfile:
+    path: /etc/krb5.conf
+    regexp: '^\[libdefaults\]$'
+    line: "[libdefaults]"
+    create: "yes"
+
+- name: Create or Update rdns in krb5.conf file
+  lineinfile:
+    path: /etc/krb5.conf
+    regexp: '^\s\srdns\s=\s(false|true)$'
+    insertafter: '^\[libdefaults\]$'
+    line: "  rdns = false"
+
+# udp_preference_limit = 1
+# Force Kerberos to use TCP and prevent the error "KRK5KRB_ERR_RESPONSE_TOO_BIG" when using UDP
+# This is for optimising the authentication. Otherwise vCSA try to auth with UDP, fail and then use TCP.
+- name: Set udp_preference_limit = 1 in krb5.conf file
+  lineinfile:
+    path: /etc/krb5.conf
+    regexp: '^\s\sudp_preference_limit\s=\s(1|0)$'
+    insertafter: '^  dns_lookup_kdc = false$'
+    line: "  udp_preference_limit = 1"
+
+# remove weak encryption
+- name: Set allow_weak_crypto = false in krb5.conf file
+  lineinfile:
+    path: /etc/krb5.conf
+    regexp: '^\s\sallow_weak_crypto\s=\s(true|false)$'
+    insertafter: '^  udp_preference_limit = 1$'
+    line: "  allow_weak_crypto = false"
+
+# Weak / incorrect encryption is allowed in the default OVA configuration (6.5 and 7.0-beta checked)
+- name: Set default_tgs_enctypes = AES256-CTS AES128-CTS in krb5.conf file
+  lineinfile:
+    path: /etc/krb5.conf
+    regexp: '^\s\sdefault_tgs_enctypes\s=\s(AES256-CTS\sAES128-CTS|AES256-CTS\sAES128-CTS\sRC4-HMAC)$'
+    insertafter: '^\s\sallow_weak_crypto\s=\s(true|false)$'
+    line: "  default_tgs_enctypes = AES256-CTS AES128-CTS"
+
+- name: Set default_tkt_enctypes = AES256-CTS AES128-CTS in krb5.conf file
+  lineinfile:
+    path: /etc/krb5.conf
+    regexp: '^\s\sdefault_tkt_enctypes\s=\s(AES256-CTS\sAES128-CTS|AES256-CTS\sAES128-CTS\sRC4-HMAC)$'
+    insertafter: '^\s\sdefault_tgs_enctypes\s=\s(AES256-CTS\sAES128-CTS|AES256-CTS\sAES128-CTS\sRC4-HMAC)$'
+    line: "  default_tkt_enctypes = AES256-CTS AES128-CTS"
+
+- name: Set preferred_enctypes = AES256-CTS AES128-CTS in krb5.conf file
+  lineinfile:
+    path: /etc/krb5.conf
+    regexp: '^\s\spreferred_enctypes\s=\s(AES256-CTS\sAES128-CTS|AES256-CTS\sAES128-CTS\sRC4-HMAC)$'
+    insertafter: '^\s\sdefault_tkt_enctypes\s=\s(AES256-CTS\sAES128-CTS|AES256-CTS\sAES128-CTS\sRC4-HMAC)$'
+    line: "  preferred_enctypes = AES256-CTS AES128-CTS"
+
+# Add [domain_realm]
+- name: Add [domain_realm] in krb5.conf file
+  lineinfile:
+    path: /etc/krb5.conf
+    regexp: '^[domain_realm]$'
+    insertafter: '^  udp_preference_limit = false$'
+    line: "[domain_realm]"
+  when: not (ad_join_check_command.stdout | join('') ) is search(ad_join_string)
+
+# Add default realm
+- name: Add domain mapping in [domain_realm] section in krb5.conf file
+  lineinfile:
+    path: /etc/krb5.conf
+    regexp: '^\s\s.{{ server_dns_extension }}\s=\s{{ ad_join_domain | upper }}$'
+    insertafter: '^[domain_realm]$'
+    line: "  .{{ server_dns_extension }} = {{ ad_join_domain | upper }}"
+  when: not (ad_join_check_command.stdout | join('') ) is search(ad_join_string)
+
+- name: Join appliance to the domain
+  command: "/opt/likewise/bin/domainjoin-cli join --ou {{ ad_join_ou }} {{ ad_join_domain }} {{ ad_join_username }} '{{ ad_join_password }}'"
+  register: ad_join_command
+  when: not (ad_join_check_command.stdout | join('') ) is search(ad_join_string)
   ignore_errors: yes
-  when: not (ad_query.stdout is search('Domain = ' + vcsa_ad_dom_join_domain|upper))
-  changed_when: ad_join.stdout is search("SUCCESS")
-  
+
 - name: Leave the domain if there was an issue
   command: "/opt/likewise/bin/domainjoin-cli leave"
-  register: ad_leave
-  when: ad_join.rc is defined and ad_join.rc > 0
+  register: ad_leave_command
+  when: ad_join_command.rc is defined and ad_join_command.rc > 0
 
 - name: Fail if there was an issue joining the domain
   fail:
-    msg: "{{ ad_join.stdout }}"
-  when: |
-    (ad_join.rc is defined and ad_join.rc > 0)
+    msg: "{{ ad_join_command.stdout }}"
+  when: ad_join_command.rc is defined and ad_join_command.rc > 0
+
+# Update dns_lookup_kdc = false  as its overwritten by domainjoin-cli join
+# Kerberos security hardening + this is not needed
+- name: Update dns_lookup_kdc = false in krb5.conf file
+  lineinfile:
+    path: /etc/krb5.conf
+    regexp: '^\s\sdns_lookup_kdc\s=\s(false|true)$'
+    line: "  dns_lookup_kdc = false"
+
+# Update default realm as the server is registered in a different domain that doesn't match its extension
+# We update it as its overwritten by domainjoin-cli join
+- name: Update [domain_realm] section in krb5.conf file
+  lineinfile:
+    path: /etc/krb5.conf
+    regexp: '^\s\s.{{ server_dns_extension | lower }}\s=\s{{ server_dns_extension | upper }}$'
+    insertafter: '^[domain_realm]$'
+    line: "  .{{ server_dns_extension }} = {{ ad_join_domain | upper }}"
+
+# Weak / incorrect encryption is allowed in the default OVA configuration (6.5 and 7.0-beta checked)
+- name: Set default_tgs_enctypes = AES256-CTS AES128-CTS in krb5.conf file
+  lineinfile:
+    path: /etc/krb5.conf
+    regexp: '^\s\sdefault_tgs_enctypes\s=\s(AES256-CTS\sAES128-CTS|AES256-CTS\sAES128-CTS\sRC4-HMAC)$'
+    insertafter: '^\s\sudp_preference_limit\s=\s(1|0)$'
+    line: "  default_tgs_enctypes = AES256-CTS AES128-CTS"
+
+- name: Set default_tkt_enctypes = AES256-CTS AES128-CTS in krb5.conf file
+  lineinfile:
+    path: /etc/krb5.conf
+    regexp: '^\s\sdefault_tkt_enctypes\s=\s(AES256-CTS\sAES128-CTS|AES256-CTS\sAES128-CTS\sRC4-HMAC)$'
+    insertafter: '^\s\sdefault_tgs_enctypes\s=\s(AES256-CTS\sAES128-CTS|AES256-CTS\sAES128-CTS\sRC4-HMAC)$'
+    line: "  default_tkt_enctypes = AES256-CTS AES128-CTS"
+
+- name: Set preferred_enctypes = AES256-CTS AES128-CTS in krb5.conf file
+  lineinfile:
+    path: /etc/krb5.conf
+    regexp: '^\s\spreferred_enctypes\s=\s(AES256-CTS\sAES128-CTS|AES256-CTS\sAES128-CTS\sRC4-HMAC)$'
+    insertafter: '^\s\sdefault_tkt_enctypes\s=\s(AES256-CTS\sAES128-CTS|AES256-CTS\sAES128-CTS\sRC4-HMAC)$'
+    line: "  preferred_enctypes = AES256-CTS AES128-CTS"
