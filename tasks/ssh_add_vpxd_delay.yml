@@ -1,0 +1,15 @@
+---
+- name: Add VPXD start delay in /usr/sbin/vpxd
+  lineinfile:
+    path: /usr/sbin/vpxd
+    regexp: '^sleep\s\d{2,5}$'
+    insertafter: "^# one that does not support the -f option. --hpreg$"
+    line: "sleep {{ vpxd_start_delay }}"
+  register: vpxd_start_delay_change
+
+- name: Add VPXD StartTimeout in /etc/vmware/vmware-vmon/svcCfgfiles/vpxd.json
+  lineinfile:
+    path: /etc/vmware/vmware-vmon/svcCfgfiles/vpxd.json
+    regexp: '^\s\s\s\"StartTimeout\"\s:\s\d{2,5},$'
+    line: '   "StartTimeout" : {{ vpxd_start_timeout }},'
+  register: vpxd_start_timeout_change
