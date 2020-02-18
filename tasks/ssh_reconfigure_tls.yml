@@ -1,0 +1,44 @@
+---
+# This is for disabling TLS1.0 and TLS1.1 on vCSA 6.5
+# This is disabled per default on vCSA7.x so this is not needed on newer versions
+
+- name: Check if rpm file exists
+  stat:
+    path: /tmp/{{ tlsreconfigurator_file }}
+    get_checksum: no
+  register: stat_tls_file
+
+- name: Copy {{ tlsreconfigurator_file }} file to server
+  copy:
+     src: "{{ tlsreconfigurator_file }}"
+     dest: /tmp/{{ tlsreconfigurator_file }}
+     checksum: "{{ tlsreconfigurator_file_checksum }}"
+  when: not (stat_tls_file.stat.exists|bool)
+
+- name: Check if RPM is already installed
+  shell: rpm -q {{ tlsreconfigurator_file | regex_replace('.rpm') }}
+  args:
+    warn: false
+  register: rpm_check
+  changed_when: false
+  ignore_errors: yes
+
+# --replacepkgs  is used so the ansible task can be re-run over and over
+- name: Install package {{ tlsreconfigurator_file }}
+  shell: rpm -Uvh /tmp/{{ tlsreconfigurator_file }}
+  args:
+    warn: false
+  when: '"is not installed" in rpm_check.stdout'
+
+- name: Check if any services are using TLS 1.0
+  shell: /usr/lib/vmware-vSphereTlsReconfigurator/VcTlsReconfigurator/reconfigureVc scan
+  register: tls_query
+  changed_when: false
+
+# By default the script will restart ALL the vmware services so the change can take effect. This can takes up to 20mins.
+# Because we are rebooting the appliance later anyway, we can disable this
+
+- name: Use VMware TLS Reconfigurator to disable TLS1.0 and TLS1.1
+  shell: /usr/lib/vmware-vSphereTlsReconfigurator/VcTlsReconfigurator/reconfigureVc update -p TLSv1.2 --no-restart
+  when: '"TLSv1.0" in tls_query.stderr'
+  register: tls_configured
