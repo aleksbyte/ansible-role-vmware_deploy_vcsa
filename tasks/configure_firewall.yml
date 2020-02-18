@@ -1,0 +1,9 @@
+---
+- name: Add the Default Deny Rule
+  include_tasks: add_firewall_rule.yml
+  vars:
+      vcsa_rule:
+        ipaddress: "0.0.0.0"
+        prefix: "0"
+        policy: "{{ vcsa_default_fw_rule_policy }}"
+      vcsa_default_fw_rule: true
