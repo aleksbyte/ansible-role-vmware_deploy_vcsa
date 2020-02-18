@@ -121,3 +121,46 @@
 - name: Import CA Signed Certificates
   include_tasks: import_ssl_certificate.yml
   when: vcsa_use_signed_certificate|bool
+  
+  ---
+# - include_tasks: wait_for_ssh.yml
+# - include_tasks: configure_ssh_host_key.yml
+# - include_tasks: ssh_check_firstboot_success.yml
+# # SSH ciphers are now correct from vCSA6.5 u1 and onwards so this task is disabled:
+# # - include_tasks: ssh_add_ssh_ciphers.yml
+# - include_tasks: ssh_configure_syslog.yml
+# - include_tasks: ssh_join_ad.yml
+# - include_tasks: rest_api_auth_login.yml
+# - include_tasks: stop_services.yml
+# - include_tasks: start_services.yml
+# - include_tasks: rest_api_auth_logout.yml
+
+# - include_role:
+#     name: venafi_manage_certs
+#     public: yes
+#   when: active_environment in strict_environment
+
+# - include_tasks: ssh_replace_certificate.yml
+# - include_tasks: ssh_reconfigure_tls.yml
+# - include_tasks: ssh_add_vpxd_delay.yml
+# - include_tasks: reboot_appliance.yml
+# - include_tasks: rest_api_auth_login.yml
+# - include_tasks: wait_for_vpxd.yml
+# - include_tasks: ssh_add_sso_identity_sources_v2.yml
+
+# - include_tasks: add_permission.yml
+#   loop: "{{ vcsa_permissions }}"
+#   loop_control:
+#     loop_var: vcsa_permission
+# # - include_tasks: rest_add_global_permissions.yml
+# - include_tasks: remove_vcsa_scheduled_tasks.yml
+# - include_tasks: assign_vcsa_license.yml
+# - include_tasks: configure_advanced_settings.yml
+
+# - include_tasks: add_firewall_rule.yml
+#   loop: "{{ vcsa_firewall_rules }}"
+#   loop_control:
+#     loop_var: vcsa_rule
+#   when: vcsa_firewall_rules is defined
+
+# - include_tasks: rest_api_auth_logout.yml
