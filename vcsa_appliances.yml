@@ -9,8 +9,12 @@ tlsreconfigurator_file_checksum: 5e9b0742af0605a3fa699fd108ea8d4ae13719da
 identity_sso_config_file: vmware-identity-sso-config.jar
 identity_sso_config_file_checksum: 825a1a1d78fe4f198e15f631e386ca09a032fae4
 
----
-## This File contains default global settings for all vCSA in JPMC
+## A list of vcsa firewall rules to create on the appliance.
+## The default policy is 'allow'.
+# vcsa_firewall_rules:
+#   - ipaddress: ""
+#     prefix: ""
+#     # policy: "allow"
 
 ## Set the global default credentials to set on the VCSA appliances.
 ## This can be overridden by setting vcsa_root_password in host_vars.
