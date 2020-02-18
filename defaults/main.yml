@@ -26,6 +26,12 @@ vcsa_root_expiration_days: 90
 ## Default setting for joining the appliance to the domain.
 vcsa_join_to_domain: no
 
+# Waiting that vpxd service starts
+vpxd_start_delay: 600
+vpxd_start_timeout: 900
+vpxd_rest_wait_retries: 120
+vpxd_rest_wait_delay: 30
+
 ## Default database settings.
 default_database_max_connections: 50
 default_database_task_cleanup: true
