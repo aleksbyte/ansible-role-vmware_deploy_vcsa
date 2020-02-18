@@ -1,0 +1,72 @@
+## Set the ova file name.
+ova_file: "VMware-vCenter-Server-Appliance-6.5.0.30000-14020092_OVF10.ova"
+
+## TLS Reconfigurator
+tlsreconfigurator_file: VMware-vSphereTlsReconfigurator-6.5.0-10629370.x86_64.rpm
+tlsreconfigurator_file_checksum: 5e9b0742af0605a3fa699fd108ea8d4ae13719da
+
+## vmware-identity-sso-config.jar update
+identity_sso_config_file: vmware-identity-sso-config.jar
+identity_sso_config_file_checksum: 825a1a1d78fe4f198e15f631e386ca09a032fae4
+
+---
+## This File contains default global settings for all vCSA in JPMC
+
+## Set the global default credentials to set on the VCSA appliances.
+## This can be overridden by setting vcsa_root_password in host_vars.
+vcsa_root_username: "root"
+ansible_user: "{{ vcsa_root_username }}"
+
+## Set the global default SSO credentials..
+## This can be overridden by setting vcsa_sso_password in host_vars.
+vcsa_sso_username: "administrator@vsphere.local"
+
+## Set the Default VCSA deployment option.
+## TODO: Provide details of deployment options available.
+ova_deployment_option: "large"
+
+## Set the download location for images retrieved using a http source.
+ova_url: "{{ ova_root_url }}/"
+
+## VCSA Permissions
+vcsa_permissions:
+  - role: Admin
+    principal: "{{ ad_join_domain }}\\{{ vro_vc_username }}"
+
+## A list of services to start.
+# Autodeploy and image builder shouldn't be used outside the lab on vCSA6.5
+vcsa_start_services: []
+# - imagebuilder
+# - rbd
+
+## A list of services to stop.
+vcsa_stop_services:
+ - updatemgr
+ - imagebuilder
+ - rbd
+
+# Waiting that vpxd service starts
+vpxd_start_delay: 600
+vpxd_start_timeout: 900
+vpxd_rest_wait_retries: 120
+vpxd_rest_wait_delay: 30
+
+# advanced settings
+vcsa_global_advanced_settings:
+  - "client.timeout.normal": 7200
+  - "client.timeout.long": 7200
+  - "vpxd.certmgmt.certs.daysValid": 730
+  - "config.vpxd.hostPasswordLength": 32              # Define the password length that VC will use for vpxuser on each esxi hosts
+  - "VirtualCenter.VimPasswordExpirationInDays": 30   # Define the password expiration that VC will use for vpxuser on each esxi hosts (it rotates it automatically after that)
+
+# vCSA sso identity
+SSOIdentitySourceName: ""
+
+# Set the Syslog servers.
+syslog_servers:
+  - server: loginsight-01
+    protocol: tcp
+    port: 514
+  - server: loginsight-02
+    protocol: tcp
+    port: 514
