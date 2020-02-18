@@ -1,0 +1,38 @@
+---
+# https://kb.vmware.com/s/article/67304
+# Update the vmware-identity-sso-config.jar file as it contains more features and more commands
+
+- name: Update {{ identity_sso_config_file }}
+  copy:
+    src: "{{ identity_sso_config_file }}"
+    dest: /opt/vmware/lib64/{{ identity_sso_config_file }}
+    mode: u=rw,g=r,o=r
+    checksum: "{{ identity_sso_config_file_checksum }}"
+    backup: yes
+
+- name: Check if domain exists in identity sources
+  shell: "/opt/vmware/bin/sso-config.sh -get_identity_sources"
+  register: check_domain_in_identity
+  changed_when: false
+
+# If the command above returns a response that include "IdentitySourceName        :  AD.JPMORGANCHASE.COM" we assume the SSO identity is correctly setup
+# It is not always in upper or lower case so we ignore the case
+- name: Add domain to identity sources
+  shell: "/opt/vmware/bin/sso-config.sh -add_identity_source -type nativead -domain {{ ad_join_domain }}"
+  register: add_identity_source
+  when: not (check_domain_in_identity.stdout is regex('IdentitySourceName\s+:\s+' + SSOIdentitySourceName |upper, multiline=True, ignorecase=True))
+
+
+
+- name: Check if SSO configuration failed and leave domain if it has
+  block:
+  # - name: Leave the domain if there was an issue configuring SSO
+  #   command: "/opt/likewise/bin/domainjoin-cli leave"
+  #   register: ad_leave_command
+  #   when: ("Failed to import identity source:" + ad_join_domain) in add_identity_source.stderr
+
+  - name: Fail due to SSO error
+    fail:
+      msg: "Failed to add SSO identity sources"
+    when: add_identity_source.rc >= 1
+  when: add_identity_source.rc is defined
