@@ -1,0 +1,9 @@
+---
+- name: Remove all vCSA scheduled tasks
+  sg_vmware_vcenter_scheduled_tasks:
+    hostname: "{{ inventory_hostname }}"
+    username: "{{ vcsa_sso_username }}"
+    password: "{{ vcsa_sso_password }}"
+    remove_unmanaged_tasks: true
+    validate_certs: false
+  delegate_to: localhost
